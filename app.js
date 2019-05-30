@@ -4,7 +4,8 @@ require('dotenv').config()
 const http = require('http'),
       request = require('request'),
       parser = require('xml2json'),
-      lodash = require('lodash')
+      lodash = require('lodash'),
+      { getCalendarEvents } = require('./calendar')
 
 const hostname = process.env.HOST
 const port = process.env.PORT
@@ -27,9 +28,11 @@ server.listen(port, hostname, () => {
 // declaration of functions and app variables
 let timesRequested = 0
 let eriksCalls = []
+let eriksShifts = []
 
 const minutes = process.env.POLLING_INTERVAL_IN_MINS
 const frequency = minutes * 60 * 1000
+const schedulingFrequency = 24 * 30 * 60 * 1000 // should be every 12 hours
 
 const logUpdates = (updates) => {
   if (updates.length < 1) {
@@ -93,13 +96,24 @@ const getUpdates = (updates) => {
   return lodash.differenceBy(updates, eriksCalls, 'event_num')
 }
 
+const isErikWorking = (incidents = null) => {
+  const d = new Date()
+  const shifts = incidents ? incidents.map(i => {
+    return createShift(i.start.dateTime, i.end.dateTime)
+  }) : eriksShifts
+
+  return !!shifts.find(shift => d > shift.start && d < shift.end )
+}
+
 const updateEriksCalls = (updatedCalls) => {
   const updates = getUpdates(updatedCalls)
   logUpdates(updates)
 
   if (updates.length > 0) {
-    sendUpdateMessage(updates)
-    eriksCalls = [...eriksCalls, ...updates]
+    if (isErikWorking(updates)) {
+      sendUpdateMessage(updates)
+      eriksCalls = [...eriksCalls, ...updates]
+    }
   }
 }
 
@@ -129,6 +143,62 @@ const fetchTFSData = () => {
   })
 }
 
+const createShift = (start, end) => {
+  return {
+    start: new Date(start),
+    end: new Date(end)
+  }
+}
+
+const addDaysToDate = (date, days) => {
+  var result = new Date(date)
+  result.setDate(result.getDate() + days)
+  return result
+}
+
+const getNextShiftRepeat = (shift) => {
+  return createShift(addDaysToDate(shift.start, 28), addDaysToDate(shift.end, 28))
+}
+
+const createOneToOneMapOfShiftsForCurrentMonth = (events) => {
+  let oneToOneMap = events.map(e => {
+    let shift = createShift(e.start.dateTime, e.end.dateTime)
+    let d = new Date()
+    let currMonth = d.getMonth()
+
+    do
+      shift = getNextShiftRepeat(shift)
+    while (shift.start.getMonth() != currMonth)
+
+    return shift
+  })
+
+  return oneToOneMap
+}
+
+const getCurrentMonthShifts = (events) => {
+  let currentMonthShifts = createOneToOneMapOfShiftsForCurrentMonth(events)
+  let d = new Date()
+  let currMonth = d.getMonth()
+
+  let nextShifts = currentMonthShifts.map(s => {
+    return getNextShiftRepeat(s)
+  })
+    .filter(s => {
+      return s.start.getMonth() == currMonth
+    })
+
+  currentMonthShifts = [...currentMonthShifts, ...nextShifts]
+  let uniq = lodash.uniqBy(currentMonthShifts, 'start')
+  return lodash.sortBy(uniq, 'start')
+}
+
+getCalendarEvents()
+  .then(events => {
+    eriksShifts = getCurrentMonthShifts(events)
+  })
+  .catch(console.error)
+
 // app calls
 fetchTFSData()
 
@@ -136,3 +206,11 @@ fetchTFSData()
 setInterval(() => {
   fetchTFSData()
 }, frequency)
+
+setInterval(() => {
+  getCalendarEvents()
+    .then(events => {
+      eriksShifts = getCurrentMonthShifts(events)
+    })
+    .catch(console.error)
+}, schedulingFrequency)

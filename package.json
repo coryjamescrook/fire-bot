@@ -6,7 +6,8 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "server": "node app.js",
-    "deploy": "scp -r ./* cjc@142.93.156.111:~/fire-app"
+    "deploy": "rsync -avz -e ssh --progress --exclude=node_modules ./ cjc@142.93.156.111:~/fire-app/",
+    "deploy-old": "scp -r ./* cjc@142.93.156.111:~/fire-app"
   },
   "author": "",
   "license": "ISC",

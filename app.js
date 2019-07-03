@@ -99,7 +99,15 @@ const getUpdates = (updates) => {
 const isErikWorking = (incidents = null) => {
   const d = new Date()
   const shifts = incidents ? incidents.map(i => {
-    return createShift(i.start.dateTime, i.end.dateTime)
+    let val
+    if (i.start && i.start.dateTime && i.end && i.end.dateTime) {
+      val = createShift(i.start.dateTime, i.end.dateTime)
+    } else if (i.dispatch_time) {
+      val = createShift(i.dispatch_time, i.dispatch_time)
+    } else {
+      val = {}
+    }
+    return val
   }) : eriksShifts
 
   return !!shifts.find(shift => d > shift.start && d < shift.end )
@@ -130,7 +138,7 @@ const fetchTFSData = () => {
       console.log('error:', error)
     } else {
       const result = JSON.parse(parser.toJson(body))
-      const relevantCalls = result.tfs_active_incidents.event.filter(e => e.units_disp.includes(TRUCK_ID))
+      const relevantCalls = result.tfs_active_incidents.filter(e => e.units_disp.includes(TRUCK_ID))
       const updatedCalls = []
 
       relevantCalls.forEach(c => {

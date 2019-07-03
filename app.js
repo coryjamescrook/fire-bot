@@ -138,14 +138,11 @@ const fetchTFSData = () => {
       console.log('error:', error)
     } else {
       const result = JSON.parse(parser.toJson(body))
-      const relevantCalls = result.tfs_active_incidents.filter(e => e.units_disp.includes(TRUCK_ID))
-      const updatedCalls = []
+      const relevantCalls = result.tfs_active_incidents.event
+        ? result.tfs_active_incidents.event.filter(e => e.units_disp.includes(TRUCK_ID))
+        : []
 
-      relevantCalls.forEach(c => {
-        updatedCalls.push(c)
-      })
-
-      updateEriksCalls(updatedCalls)
+      updateEriksCalls(relevantCalls)
     }
 
   })
